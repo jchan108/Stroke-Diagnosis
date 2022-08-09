@@ -1,5 +1,7 @@
 # Stroke-Diagnosis
 
+This project was meant to look into the issue of being able to diagnosis whether or not a patient has had a stroke before they make it to the hospital.
+
 Modeled the association between stroke diagnosis and varying
 non-EEG clinical variables through fitting logistic regression
 models incorporating spline functions.
