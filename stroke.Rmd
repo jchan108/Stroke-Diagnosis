@@ -1,0 +1,767 @@
+---
+title: "Untitled"
+author: "Joshua Chang"
+date: "6/26/2022"
+output: pdf_document
+---
+
+Assumptions of Logistic Regression
+Logistic regression does not make many of the key assumptions of linear regression and general linear models that are based on ordinary least squares algorithms – particularly regarding linearity, normality, homoscedasticity, and measurement level.
+
+
+First, logistic regression does not require a linear relationship between the dependent and independent variables.  Second, the error terms (residuals) do not need to be normally distributed.  Third, homoscedasticity is not required.  Finally, the dependent variable in logistic regression is not measured on an interval or ratio scale.
+
+However, some other assumptions still apply.
+
+First, binary logistic regression requires the dependent variable to be binary and ordinal logistic regression requires the dependent variable to be ordinal.
+
+Second, logistic regression requires the observations to be independent of each other.  In other words, the observations should not come from repeated measurements or matched data.
+
+Third, logistic regression requires there to be little or no multicollinearity among the independent variables.  This means that the independent variables should not be too highly correlated with each other.
+
+Fourth, logistic regression assumes linearity of independent variables and log odds.  although this analysis does not require the dependent and independent variables to be related linearly, it requires that the independent variables are linearly related to the log odds.
+
+
+
+```{r}
+setwd("c:/users/joshua/downloads")
+data = read.csv("DA2022.csv")
+dataClin
+
+library(ROCR)
+library(pROC)
+```
+
+Missing Data Problem
+
+Out of the 100 observations in our data, when analyzing only the clinical variables, 6 subjects had missing values. In this situation with not too many missing values, I decide to treat them as MCAR and 
+
+```{r}
+
+dataClin = data[,c(2:5,106)]
+dataClinC = na.omit(dataClin)
+
+```
+
+```{r}
+summary(dataClin$Age)
+summary(dataClin$Gender)
+summary(dataClin$LKW)
+summary(dataClin$RACE)
+
+
+```
+
+
+```{r}
+ggplot(dataClinC, mapping = aes(x = dataClinC$RACE)) +
+geom_bar(aes(fill = dataClinC$Gender))
+
+```
+
+
+```{r}
+dataClinC$AgeS = dataClinC$Age*(dataClinC$Age>67)
+dataClinC$AgeSQ = dataClinC$AgeS^2
+dataClinC$LKWS = dataClinC$LKW*(dataClinC$LKW>13)
+dataClinC$LKWSQ = dataClinC$LKWS^2
+
+dataClinC
+```
+potential spline model?
+
+Examine association between RACE and Stroke given all other clinical variables
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+means = tapply(dataClinC$Stroke, list(dataClinC$RACE),mean)
+
+
+plot(c(0:5),means,type="o",col="blue",pch=16, cex = 1,
+    xlab="RACE",ylab="Proportion Stroke",
+    main="Proportion of Stroke by RACE", ylim = c(0,1))
+
+means
+
+summary(dataClinC$RACEF)
+filter(dataClinC, RACEF != '5')
+
+dataClinC
+```
+
+
+
+```{r}
+backwards = glm(Stroke ~ Age + RACE, family=binomial(link = 'logit'),data = dataClinC)
+
+```
+
+
+Diagnostics (for future)
+
+```{r}
+#library(car)
+#plot(bacwwards,which = 4,id.n = 3)
+#car::vif(backwards)
+
+dataClinC$RACEF = as.factor(dataClinC$RACE)
+```
+
+
+
+
+```{r}
+ggplot(dataClinC, aes(LKW, Stroke, color = Gender)) +
+stat_smooth(method="loess", formula=y~x,
+alpha=0.2, size=2, aes(fill = Gender)) +
+geom_point(position=position_jitter(height=0.02, width=0)) +
+xlab("LKW") + ylab("Probability of Stroke") + ggtitle("LKW vs Probability of Stroke, with smoothed curve, by Gender")
+
+ggplot(dataClinC, aes(LKW, Stroke)) +
+stat_smooth(method="loess", formula=y~x,
+alpha=0.2, size=2) +
+geom_point(position=position_jitter(height=0.02, width=0)) +
+xlab("LKW") + ylab("Probability of Stroke") + ggtitle("LKW vs Probability of Stroke, with smoothed curve")
+
+```
+
+```{r}
+
+ggplot(dataClinC, aes(Age, Stroke)) +
+stat_smooth(method="loess", formula=y~x,
+alpha=0.2, size=2) +
+geom_point(position=position_jitter(height=0.02, width=0)) +
+xlab("Age") + ylab("Probability of Stroke") + ggtitle("Age vs Probability of Stroke, with smoothed curve")
+
+ggplot(dataClinC, aes(Age, Stroke, color=Gender)) +
+stat_smooth(method="loess", formula=y~x,
+alpha=0.2, size=2, aes(fill=Gender)) +
+geom_point(position=position_jitter(height=0.02, width=0)) +
+xlab("Age") + ylab("Probability of Stroke") + ggtitle("Age vs Probability of Stroke, with smoothed curve, by gender")
+
+
+```
+
+
+The splines for age and LKWS indicate some significance.
+
+```{r}
+LKWmodelb = glm(Stroke ~ Age + AgeS + RACE + Gender + Gender*AgeS  + LKW + LKWS + LKWSQ, family=binomial(link = 'logit'),data = dataClinC)
+summary(LKWmodelb)
+```
+
+
+
+
+```{r}
+LKWmodelb$coef
+
+b0 = LKWmodelb$coe[1]
+age = LKWmodelb$coef[2]
+ages = LKWmodelb$coef[3]
+RACE = LKWmodelb$coef[4]
+male =LKWmodelb$coef[5]
+LKW = LKWmodelb$coef[6]
+LKWs = LKWmodelb$coef[7]
+LKWsq = LKWmodelb$coef[8]
+agemale = LKWmodelb$coef[9]
+
+```
+
+```{r}
+ageR = seq(from = min(dataClinC$Age), to = max(dataClinC$Age),by = 1)
+ageS = ageR
+ageS[1:12] = 0
+
+
+
+Xlkw = 12
+Xlkws = 0
+Xlkwsq = 0
+male = 0
+agemale = 0
+
+a_logits <- b0 + 
+  age*ageR +
+  ages*ageS +
+  RACE*0 +
+  LKW*Xlkw
+
+b_logits <- b0 + 
+  age*ageR +
+  ages*ageS +
+  RACE*1 +
+  LKW*Xlkw
+
+c_logits <- b0 + 
+  age*ageR +
+  ages*ageS +
+  RACE*2 +
+  LKW*Xlkw
+
+d_logits <- b0 + 
+  age*ageR +
+  ages*ageS +
+  RACE*3 +
+  LKW*Xlkw
+
+e_logits <- b0 + 
+  age*ageR +
+  ages*ageS +
+  RACE*4 +
+  LKW*Xlkw
+
+
+a_probs <- exp(a_logits)/(1 + exp(a_logits))
+b_probs <- exp(b_logits)/(1 + exp(b_logits))
+c_probs <- exp(c_logits)/(1 + exp(c_logits))
+d_probs <- exp(d_logits)/(1 + exp(d_logits))
+e_probs <- exp(e_logits)/(1 + exp(e_logits))
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+library(tidyr)
+plot.data <- data.frame(a=a_probs, b=b_probs, c=c_probs, d = d_probs, e = e_probs, age=ageR)
+plot.data <- gather(plot.data, key=group, value=prob, a:e)
+head(plot.data)
+
+ggplot(plot.data, aes(x=age, y=prob, color=group)) + 
+ geom_line(lwd=2) + labs(x="age", y="P(Stroke)", title="Predicted Probability of Stroke by age and varying RACE scores",subtitle = "For a male with LKW value of 12")  +  scale_color_manual(name = 'RACE',labels=c("0","1","2","3","4"),values=c("chartreuse3","blue","red","orange","purple"))
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+require(MASS)
+exp(coefficients(LKWmodelb))
+summary(LKWmodelb)
+
+exp(cbind(coef(LKWmodelb),confint(LKWmodelb)))
+car:::vif(LKWmodelb)
+```
+
+
+```{r}
+modSpline = glm(Stroke ~ Age + AgeS + RACE + Gender + Gender*AgeS, family=binomial(link = 'logit'),data = dataClinC)
+summary(modSpline)
+```
+
+
+```{r}
+library(olsrr)
+summary(backwards)
+anova(backwards,LKWmodelb)
+
+ols_mallows_cp(backwards,modSpline)
+```
+
+```{r}
+library(mdscore)
+lr.test(backwards,modSpline)
+
+lr.test(backwards,LKWmodelb)
+dataClinC
+```
+
+
+```{r}
+library(stats4)
+BIC(backwards)
+BIC(modSpline)
+BIC(LKWmodelb)
+```
+
+```{r}
+library(boot)
+library(dplyr)
+
+cost <- function(r, pi = 0) mean(abs(r-pi) > 0.5)
+
+
+dat = dplyr::select(dataClinC,Age,RACE,Stroke)
+1-cv.glm(dat,backwards,K=10,cost=cost)$delta[1]
+
+dat2 = dplyr::select(dataClinC,Age,RACE,AgeS, Gender ,LKW ,LKWS, LKWSQ, Stroke)
+dat2$GenderS = (dat2$Gender=="M")*dat2$AgeS
+1-cv.glm(dat2,LKWmodelb,K = 10,cost=cost)$delta[1]
+
+dat3 = dplyr::select(dataClinC,Age,RACE,AgeS, Gender, Stroke)
+dat3$GenderS = (dat3$Gender=="M")*dat3$AgeS
+1-cv.glm(dat3,modSpline,K = 10,cost=cost)$delta[1]
+
+dat2
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Question 3
+
+fit with LASSO logistic regression
+
+The dataset has more features than observations, so I will be using Lasso Regerssion, a type of penalized logistic regression to select a model with the most important predictor variables.
+
+
+```{r}
+library(tidyverse)#data manip & visualization
+library(caret) #machine learning
+library(glmnet) #regression
+```
+
+
+```{r}
+#statistical imputation methods
+
+dataEEG = data
+dataEEGsub = subset(dataEEG, select = -c(Gender,Subjec.ID))
+
+dataEEGsub
+```
+
+Use the MICE package to implement multiple imputations. MICE assumes data are Missing at Random, so that the missing data for an individual can be estimated by that individual's other variables.
+
+```{r}
+library(mice)
+library(VIM)
+
+```
+
+
+```{r}
+
+
+
+mice_plot <- aggr(dataEEGsub, col=c('red','white'),
+                    numbers=TRUE, sortVars=TRUE,
+                    labels=names(dataEEGsub), cex.axis=.7,
+                    gap=3, ylab=c("Missing data","Pattern"))
+
+
+```
+
+```{r}
+imputed_Data <- mice(dataEEGsub, m=5, maxit = 20, method = 'pmm', seed = 500)
+summary(imputed_Data)
+```
+
+```{r}
+imputed_Data$imp$E7
+```
+
+
+```{r}
+complete = complete(imputed_Data,2)
+complete
+
+dataEEGsub2 = cbind(dataEEG[,2],complete)
+colnames(dataEEGsub2)[1] = "Gender"
+dataEEGsub2
+
+```
+
+```{r}
+library(caTools)
+set.seed(99) 
+sample = sample.split(dataEEGsub2$Stroke, SplitRatio = 0.8)
+train = subset(dataEEGsub2, sample == TRUE)
+test  = subset(dataEEGsub2, sample == FALSE)
+
+x
+```
+
+
+```{r}
+library(glmnet)
+set.seed(2)
+x = model.matrix(Stroke~.,train)
+y = ifelse(train$Stroke=="1",1,0)
+
+cv.lasso = cv.glmnet(x,y,alpha = 1, family = "binomial",type.measure="auc", nfolds = 8)
+plot(cv.lasso)
+
+
+
+```
+
+```{r}
+cv.lasso$lambda.min
+coef(cv.lasso, cv.lasso$lambda.1se)
+
+
+```
+
+
+
+```{r}
+
+x_test = model.matrix(Stroke~.,test)
+lasso_prob <- predict(cv.lasso,newx = x_test,s=lambda_1se,type="response")
+lasso_predict = rep(0,nrow(test))
+lasso_predict[lasso_prob>.5] <- 1
+
+table(pred = lasso_predict, true = test$Stroke)
+mean(lasso_predict == test$Stroke)
+lasso_predict
+
+
+```
+
+```{r}
+library(pROC)
+
+roc1 <- pROC::roc(test$Stroke ~ lasso_prob)
+plot(roc1, print.auc = TRUE, print.thres.best.method = "youden")
+
+
+
+```
+
+```{r}
+
+
+
+#get the predicted probabilities from logistic regression
+fitted.results <- predict(mylogit,newdata=subset(test.data2,select=c(1,2,4,9,11,5,6)),type='response', na.action = na.pass)
+
+
+#logistic regression outputs probabilities, lets determine the best probability
+for (p in seq(.2,.4,.05)) {
+fitted.results2 <- ifelse(fitted.results > p,1,0) 
+misClasificError <- mean(fitted.results2 != test.data2$counselexp)
+print(paste(p,'Accuracy',1-misClasificError))
+t = table(fitted.results2,test.data2$counselexp,dnn = c("Predicted","Actual"))
+print(t)
+print("Class 0 prediction accuracy")
+t1= t[1,1]/(t[1,1] + t[1,2]) #class 0
+print(t1)
+print("Class 1 prediction accuracy")
+t2 = t[2,2]/(t[2,2]+t[2,1]) #class 1
+print(t2)
+print("Percent of Class 0 Correct Diagnosed")
+t3 = t[1,1]/(t[1,1] + t[2,1])
+print(t3)
+print("Percent of Class 1 Correct Diagnosed")
+t4 = t[2,2]/(t[1,2] + t[2,2])
+print(t4)
+}
+
+
+
+
+misClasificError <- mean(fitted.results2 != test.data2$counselexp)
+print(paste('Accuracy',1-misClasificError))
+
+
+
+#this is a ~~~ confusion matrix
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+Simpmodel =  glm(Stroke ~ Age + RACE, family=binomial(link = 'logit'),data = dataClinC)
+
+EEC
+dat = dataEEGsub2[,c(2,4,105)]
+levels(dat$Stroke) = c("No","Yes")
+dat
+dataEEGsub2F = dataEEGsub2
+levels(dataEEGsub2F$Stroke) = c("No","Yes")
+dataEEGsub2F
+```
+
+
+
+
+```{r}
+#library(mlbench)
+#library(caret)
+#library(ggplot2)
+set.seed(998)
+
+fitControl <-
+  trainControl(
+    method = "cv",
+    number = 10,
+    classProbs = T,
+    savePredictions = T,
+    summaryFunction = twoClassSummary
+  )
+
+cls.ctrl <- trainControl(method = "repeatedcv", #boot, cv, LOOCV, timeslice OR adaptive etc.
+                         number = 10,
+                         classProbs = TRUE, summaryFunction = twoClassSummary,
+                         savePredictions = "final", allowParallel = TRUE)
+
+
+
+#grid = 10 ^ seq(5, -2, length = 100)
+tune.grid = expand.grid(lambda = seq(0.0001,1,length = 20), alpha = 1)
+lasso.caret = train( Stroke ~ ., data = dataEEGsub2F, method = 'glmnet', metric = "ROC",
+                  preProcess = c("nzv", "center", "scale"), trControl = cls.ctrl,
+                    tuneGrid = tune.grid)
+
+
+for_lift <- data.frame(Class = lasso.caret$pred$obs, rf = lasso.caret$pred$Yes, resample = lasso.caret$pred$Resample)
+lift_df <-  data.frame()
+for (fold in unique(for_lift$resample)) {
+  fold_df <- dplyr::filter(for_lift, resample == fold)
+  lift_obj_data <- lift(Class ~ rf, data = fold_df, class = "Yes")$data
+  lift_obj_data$fold = fold
+  lift_df = rbind(lift_df, lift_obj_data)
+}
+lift_obj <- lift(Class ~ rf, data = for_lift, class = "Yes")
+
+
+# Plot ROC ----------------------------------------------------------------
+
+ggplot(lift_df) +
+  geom_line(aes(1 - Sp, Sn, color = fold)) +
+  scale_color_discrete(guide = guide_legend(title = "Fold")) +
+  labs(title="ROC Curve for LASSO Regression, 10 folds", x ="False Positive Rate", y = "True Positive Rate")
+
+d = ddply(lasso.caret$pred, "Resample", summarise,
+      auc = Accuracy(pred, obs))
+rbind(d,c('average',mean(d[,2])))
+
+```
+
+
+
+```{r}
+#library(mlbench)
+#library(caret)
+#library(ggplot2)
+set.seed(998)
+
+fitControl <-
+  trainControl(
+    method = "cv",
+    number = 10,
+    classProbs = T,
+    savePredictions = T,
+    summaryFunction = twoClassSummary
+  )
+
+model <- train(
+  Stroke ~ .,
+  data = dat,
+  method = "glm",
+  trControl = fitControl,
+  metric = "ROC"
+)
+
+
+
+for_lift <- data.frame(Class = model$pred$obs, rf = model$pred$Yes, resample = model$pred$Resample)
+lift_df <-  data.frame()
+for (fold in unique(for_lift$resample)) {
+  fold_df <- dplyr::filter(for_lift, resample == fold)
+  lift_obj_data <- lift(Class ~ rf, data = fold_df, class = "Yes")$data
+  lift_obj_data$fold = fold
+  lift_df = rbind(lift_df, lift_obj_data)
+}
+lift_obj <- lift(Class ~ rf, data = for_lift, class = "Yes")
+
+
+# Plot ROC ----------------------------------------------------------------
+
+ggplot(lift_df) +
+  geom_line(aes(1 - Sp, Sn, color = fold)) +
+  scale_color_discrete(guide = guide_legend(title = "Fold")) +
+  labs(title="ROC Curve for Stroke ~ RACE + Age, 10 folds", x ="False Positive Rate", y = "True Positive Rate")
+
+
+
+
+
+
+library(plyr)
+library(MLmetrics)
+d = ddply(model$pred, "Resample", summarise,
+      auc = Accuracy(pred, obs))
+rbind(d,c('average',mean(d[,2])))
+
+
+
+```
+
+
+```{r}
+dat
+```
+
+
+```{r}
+fitControl <- trainControl(method="cv", number=10, returnResamp="all",classProbs=TRUE,summaryFunction=twoClassSummary)
+
+
+test_class_cv_model <- train(Stroke ~ .,data = dat, method = "glmnet", trControl = fitControl,metric = "ROC",tuneGrid = expand.grid(alpha = 1,lambda = seq(0.001,0.1,by = 0.001)))
+```
+
+```{r}
+dat
+set.seed(8)
+
+model = glm(Stroke ~ Age + RACE, data = train)
+summary(model)
+flds <- createFolds(y, k = 10, list = TRUE, returnTrain = FALSE)
+
+
+    model = glm(Stroke ~ Age + RACE, data = dataEEGsub2,family=binomial(link = 'logit'),)
+summary(model)
+
+dataEEGsub2
+dat3 = dataEEGsub2[c("Age","RACE","Stroke")]
+dat3[,-3]
+```
+
+
+```{r}
+p = 0
+p1 = 0
+p2 = 0
+p3 = 0
+#Create 10 equally size folds
+folds <- cut(seq(1,nrow(dat3)),breaks=10,labels=FALSE)
+
+#Perform 10 fold cross validation
+for(i in 1:10){
+    #Segement your data by fold using the which() function 
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- dat3[testIndexes, ]
+    trainData <- dat3[-testIndexes, ]
+    
+    model = glm(Stroke ~ Age + RACE, data = trainData,family=binomial(link = 'logit'))
+    glm.probs = predict(model,newdata  = testData[,-3], type  ="response")
+    glm.pred = ifelse(glm.probs > .45, 1,0)
+    t = table(glm.pred,testData[,3])
+    print(t)
+    #print(glm.pred)
+    #print(testData[,3])
+    print(mean(glm.pred == testData[,3]))
+    print("Class 0 prediction accuracy")
+t1= t[1,1]/(t[1,1] + t[1,2]) #class 0
+print(t1)
+print("Class 1 prediction accuracy")
+t2 = t[2,2]/(t[2,2]+t[2,1]) #class 1
+print(t2)
+print("Percent of Class 0 Correct Diagnosed")
+t3 = t[1,1]/(t[1,1] + t[2,1])
+print(t3)
+print("Percent of Class 1 Correct Diagnosed")
+t4 = t[2,2]/(t[1,2] + t[2,2])
+print(t4)
+p = p + t[1,1]
+p1 = p1 + t[1,2]
+p2 = p2 + t[2,1]
+p3 = p3 + t[2,2]
+
+if(i ==10) {
+  print(p)
+  print(p1)
+  print(p2)
+  print(p3)
+}
+
+    #Use the test and train data partitions however you desire...
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
